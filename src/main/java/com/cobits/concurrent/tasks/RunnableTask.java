@@ -1,6 +1,6 @@
 package com.cobits.concurrent.tasks;
 
-public class RunnableTask implements Runnable {
+public class RunnableTask {
 	private final String name;
 
 	public RunnableTask(String name) {
@@ -11,13 +11,14 @@ public class RunnableTask implements Runnable {
 		return name;
 	}
 
-	public void run() {
+	public void run() throws InterruptedException{
 		try {
 			System.out.println("Executing : " + name);
 			Thread.sleep(100);
 			System.out.println("Finished : " + name);
 		} catch (InterruptedException e) {
 			System.err.println(getName() + " was interrupted from sleep. Exiting without finishing.");
+			throw new InterruptedException(getName() + " was interrupted from sleep. Exiting without finishing.");
 		}
 	}
 
