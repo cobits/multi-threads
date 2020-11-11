@@ -15,9 +15,9 @@ public class RunnableFixedThreadPool {
 	private final AtomicLong taskInitiatedCount = new AtomicLong(0);
 	private final AtomicLong taskSubmittedCount = new AtomicLong(0);
 	private final AtomicLong taskRejectedCount = new AtomicLong(0);
+	private final AtomicBoolean isActive = new AtomicBoolean(false);
 	private final BlockingQueue<RunnableTask> queue = new LinkedBlockingQueue<>();
 	private final ReentrantLock mainLock = new ReentrantLock();
-	private boolean isActive = true;
 	private WorkerThread[] workers;
 
 	public RunnableFixedThreadPool(){
@@ -29,33 +29,33 @@ public class RunnableFixedThreadPool {
 		workers = new WorkerThread[poolSize];
 		for (int i = 0; i < poolSize; i++) {
 			workers[i] = new WorkerThread(i);
-			workers[i].start();//Eager Start
+			workers[i].start();// Eager Start
 		}
+		this.isActive.set(true);// Setting Active state to true when Worker Threads have started, other states can be isIdle, isAwaitingTermination etc.
 	}
 
 	private class WorkerThread extends Thread {
 		private int workerId;
-		private AtomicBoolean workerRunning;
+		private AtomicBoolean isWorkerRunning;
 
 		public WorkerThread(int workerId){
 			this.workerId = workerId;
-			this.workerRunning = new AtomicBoolean(false);
+			this.isWorkerRunning = new AtomicBoolean(false);
 		}
 
-
 		public void run() {
-			workerRunning.set(true);
+			isWorkerRunning.set(true);
 			try {
-				while(workerRunning.get()){
+				while(isWorkerRunning.get()){
 					final RunnableTask task = queue.take();
 					taskInitiatedCount.incrementAndGet();
 					System.out.println("Scheduling " + task.getName() + " on Worker Thread " + workerId);
 					task.run();
-					//How can we maintain stats for tasks that successfully finished without any interruptions, as run won't return anything ?
+					//TODO: How can we maintain stats for tasks that successfully finished(variable taskFinishedCount) without any interruptions, as run won't return anything ?
 				}
 			} catch (InterruptedException e) {
 				System.out.println("Worker thread " + workerId + " is interrupted. Closing Worker.");
-				workerRunning.set(false);
+				isWorkerRunning.set(false);
 			}
 		}
 	}
@@ -64,7 +64,7 @@ public class RunnableFixedThreadPool {
 		mainLock.lock();
 		taskSubmittedCount.getAndIncrement();
 		try {
-			if(isActive) {
+			if(isActive.get()) { // Add a task to queue only if it's not shutdown already
 				queue.put(runnableTask);
 			} else {
 				taskRejectedCount.getAndIncrement();
@@ -77,25 +77,32 @@ public class RunnableFixedThreadPool {
 		}
 	}
 
+	/**
+	 * Just shutdown the Executor, do not accept anymore requests, do not process unscheduled tasks
+	 */
 	public void shutdown() {
 		System.out.println("Shutting down thread pool");
-		this.isActive = false;
+		this.isActive.set(false);
 		queue.clear();
 	}
 
+	/**
+	 * Shutdown the Executor, do not take any further requests in pool, do not execute any tasks enqueued already, and interrupt existing running tasks
+	 * @return List<RunnableTask> which were not executed completely and were present in the queue when interruption happened
+	 */
 	public List<RunnableTask> shutdownNow() {
 		System.out.println("Shutting down thread pool immediately");
 		mainLock.lock();
 		try {
-			this.isActive = false;
+			this.isActive.set(false); // Switch off flag to show active status of Executor
 			for(final WorkerThread workerThread : workers) {
 				if (!workerThread.isInterrupted()) {
-					workerThread.interrupt();//Send interrupt
+					workerThread.interrupt();//Send interrupt to each worker thread
 				}
 			}
-			return new ArrayList<>(queue);
+			return new ArrayList<>(queue);// Return contents of queue which won't get processed entirely due to interrupt on workers
 		} finally {
-			queue.clear();
+			queue.clear();// Clean queue
 			mainLock.unlock();
 		}
 	}
@@ -113,7 +120,7 @@ public class RunnableFixedThreadPool {
 	}
 
 	public boolean isActive(){
-		return isActive;
+		return isActive.get();
 	}
 
 	public void dumpStats() {

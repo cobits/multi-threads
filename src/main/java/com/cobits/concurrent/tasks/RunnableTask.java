@@ -14,7 +14,7 @@ public class RunnableTask implements Runnable {
 	public void run() {
 		try {
 			System.out.println("Executing : " + name);
-			Thread.sleep(200);
+			Thread.sleep(100);
 			System.out.println("Finished : " + name);
 		} catch (InterruptedException e) {
 			System.err.println(getName() + " was interrupted from sleep. Exiting without finishing.");
